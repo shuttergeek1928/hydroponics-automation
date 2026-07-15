@@ -12,7 +12,7 @@ graph TD
     ESP32["📟 ESP32 Wrover Kit<br/>(Physical Device / GPIO)"]
     SIM["💻 IoT Console Simulator<br/>(C# Console App)"]
     API["⚙️ .NET 8 Web API<br/>(Backend Host)"]
-    DB[("🗄️ SQL Server DB<br/>(LocalDB / RDS)"]
+    DB[("🗄️ SQL Server DB<br/>(LocalDB / RDS)")]
     FE["🖥️ Next.js Dashboard<br/>(React Frontend)"]
 
     %% Communications
