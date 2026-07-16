@@ -12,6 +12,24 @@ namespace IoTBackend.DTOs
         
         [JsonPropertyName("temperature")]
         public float Temperature { get; set; }
+
+        [JsonPropertyName("ph")]
+        public float Ph { get; set; }
+
+        [JsonPropertyName("tds")]
+        public float Tds { get; set; }
+
+        [JsonPropertyName("water_level")]
+        public float WaterLevel { get; set; }
+
+        [JsonPropertyName("dissolved_oxygen")]
+        public float DissolvedOxygen { get; set; }
+
+        [JsonPropertyName("ambient_temp")]
+        public float AmbientTemp { get; set; }
+
+        [JsonPropertyName("humidity")]
+        public float Humidity { get; set; }
         
         [JsonPropertyName("led_state")]
         public string LedState { get; set; } = string.Empty;

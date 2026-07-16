@@ -1,5 +1,174 @@
 @import "tailwindcss";
 
+@theme {
+  --color-primary: hsl(142, 64%, 38%);
+  --color-primary-light: hsl(142, 48%, 94%);
+  --color-primary-dark: hsl(142, 72%, 22%);
+  --color-accent: hsl(95, 52%, 50%);
+  --color-surface: hsl(120, 20%, 98%);
+  --color-border: hsl(140, 16%, 90%);
+  --color-text: hsl(160, 20%, 12%);
+  --color-text-muted: hsl(150, 8%, 50%);
+  --color-warning: hsl(38, 92%, 50%);
+  --color-danger: hsl(0, 72%, 50%);
+  --color-info: hsl(200, 72%, 50%);
+
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-spin-slow: spin 8s linear infinite;
+  --animate-float: float 4s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Base style resets and customizations */
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
-  @apply bg-gray-50 text-gray-900;
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+/* Glassmorphism Styles */
+.glassmorphism {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.glassmorphism-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.02),
+              0 1px 3px rgba(0, 0, 0, 0.01);
+}
+
+.glassmorphism-card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glassmorphism-card-hover:hover {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 10px 40px rgba(142, 180, 150, 0.15),
+              0 2px 10px rgba(142, 180, 150, 0.05);
+  transform: translateY(-2px);
+}
+
+/* Premium Button Designs */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: var(--color-primary);
+  color: #ffffff;
+  font-weight: 500;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(16, 124, 65, 0.2);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(16, 124, 65, 0.3);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-weight: 500;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background-color: rgba(142, 230, 180, 0.2);
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+.btn-secondary:active {
+  transform: translateY(0);
+}
+
+.btn-accent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: var(--color-accent);
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(140, 200, 70, 0.2);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.btn-accent:hover {
+  background-color: hsl(95, 52%, 45%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(140, 200, 70, 0.35);
+}
+
+.btn-accent:active {
+  transform: translateY(0);
+}
+
+/* Subtle decorative patterns */
+.pattern-bg {
+  background-image: radial-gradient(var(--color-border) 1px, transparent 1px);
+  background-size: 20px 20px;
 }

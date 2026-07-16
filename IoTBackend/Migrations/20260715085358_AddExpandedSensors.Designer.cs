@@ -4,6 +4,7 @@ using IoTBackend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace IoTBackend.Migrations
 {
     [DbContext(typeof(IoTDbContext))]
-    partial class IoTDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260715085358_AddExpandedSensors")]
+    partial class AddExpandedSensors
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,87 +24,6 @@ namespace IoTBackend.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("IoTBackend.Models.AlertLog", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("DeviceId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("DeviceName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("Resolved")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("ResolvedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("SensorType")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Severity")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("datetime2");
-
-                    b.Property<float?>("Value")
-                        .HasColumnType("real");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("AlertLogs");
-                });
-
-            modelBuilder.Entity("IoTBackend.Models.AutomationSchedule", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<bool>("Active")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("Duration")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("TargetDevice")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("TimeEnd")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("TimeStart")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("AutomationSchedules");
-                });
 
             modelBuilder.Entity("IoTBackend.Models.Device", b =>
                 {
@@ -232,59 +154,6 @@ namespace IoTBackend.Migrations
                     b.HasIndex("DeviceId");
 
                     b.ToTable("SensorData");
-                });
-
-            modelBuilder.Entity("IoTBackend.Models.SystemSettings", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("BackendUrl")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<float>("CalibrationPhOffset")
-                        .HasColumnType("real");
-
-                    b.Property<float>("CalibrationTdsFactor")
-                        .HasColumnType("real");
-
-                    b.Property<float>("HumidityMax")
-                        .HasColumnType("real");
-
-                    b.Property<float>("HumidityMin")
-                        .HasColumnType("real");
-
-                    b.Property<float>("PhMax")
-                        .HasColumnType("real");
-
-                    b.Property<float>("PhMin")
-                        .HasColumnType("real");
-
-                    b.Property<float>("TdsMax")
-                        .HasColumnType("real");
-
-                    b.Property<float>("TdsMin")
-                        .HasColumnType("real");
-
-                    b.Property<float>("TempMax")
-                        .HasColumnType("real");
-
-                    b.Property<float>("TempMin")
-                        .HasColumnType("real");
-
-                    b.Property<bool>("UseMock")
-                        .HasColumnType("bit");
-
-                    b.Property<float>("WaterLevelMin")
-                        .HasColumnType("real");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("SystemSettings");
                 });
 
             modelBuilder.Entity("IoTBackend.Models.DeviceCommand", b =>

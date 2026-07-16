@@ -39,16 +39,29 @@ namespace IoTSimulator
             {
                 try
                 {
-                    float temp = 20.0f + (float)(random.NextDouble() * 10.0); // 20-30 C
-                    float moisture = 40.0f + (float)(random.NextDouble() * 50.0); // 40-90 %
+                    // Generate realistic agricultural sensor readings
+                    float temp = 20.0f + (float)(random.NextDouble() * 5.0);        // Water Temp: 20-25 C
+                    float ph = 5.5f + (float)(random.NextDouble() * 1.0);           // pH: 5.5-6.5
+                    float tds = 800.0f + (float)(random.NextDouble() * 400.0);       // TDS: 800-1200 ppm
+                    float waterLevel = 70.0f + (float)(random.NextDouble() * 25.0);  // Water Level: 70-95 %
+                    float dissolvedOxygen = 5.0f + (float)(random.NextDouble() * 3.0); // DO: 5-8 mg/L
+                    float ambientTemp = 22.0f + (float)(random.NextDouble() * 8.0);  // Air Temp: 22-30 C
+                    float humidity = 50.0f + (float)(random.NextDouble() * 20.0);    // Air Humidity: 50-70 %
+                    float moisture = 40.0f + (float)(random.NextDouble() * 50.0);    // Soil/root moisture %
                     
-                    Console.WriteLine($"[SENSOR] Sending data (Temp: {temp:F1}C, Moisture: {moisture:F1}%)");
+                    Console.WriteLine($"[SENSOR] Telemetry -> Temp: {temp:F1}°C, pH: {ph:F2}, TDS: {tds:F0}ppm, Level: {waterLevel:F0}%, DO: {dissolvedOxygen:F2}mg/L");
 
                     var formContent = new FormUrlEncodedContent(new[]
                     {
                         new KeyValuePair<string, string>("DeviceId", deviceId),
                         new KeyValuePair<string, string>("SensorValue", moisture.ToString()),
                         new KeyValuePair<string, string>("Temperature", temp.ToString()),
+                        new KeyValuePair<string, string>("ph", ph.ToString()),
+                        new KeyValuePair<string, string>("tds", tds.ToString()),
+                        new KeyValuePair<string, string>("water_level", waterLevel.ToString()),
+                        new KeyValuePair<string, string>("dissolved_oxygen", dissolvedOxygen.ToString()),
+                        new KeyValuePair<string, string>("ambient_temp", ambientTemp.ToString()),
+                        new KeyValuePair<string, string>("humidity", humidity.ToString()),
                         new KeyValuePair<string, string>("LedState", isLedOn ? "on" : "off"),
                         new KeyValuePair<string, string>("PumpState", isPumpOn ? "on" : "off")
                     });
