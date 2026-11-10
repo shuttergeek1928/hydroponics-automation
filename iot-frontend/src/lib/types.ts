@@ -113,3 +113,14 @@ export interface SystemStats {
   averageWaterTemp: number;
   averageDissolvedOxygen: number;
 }
+
+export interface GrowthObservation {
+  id: string;
+  date: string; // YYYY-MM-DD
+  plantName: string;
+  stage: 'Seedling' | 'Vegetative' | 'Flowering' | 'Fruiting' | 'Harvest';
+  heightCm?: number;
+  health: 'Excellent' | 'Good' | 'Fair' | 'Poor';
+  notes: string;
+  createdAt: string;
+}

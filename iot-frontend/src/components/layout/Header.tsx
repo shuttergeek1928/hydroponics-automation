@@ -25,6 +25,7 @@ export default function Header({ setIsMobileOpen }: HeaderProps) {
       let label = segment.charAt(0).toUpperCase() + segment.slice(1);
       if (label === "Ph") label = "pH";
       if (label === "Ec") label = "EC";
+      if (label === "Growth") label = "Plant Growth Tracker";
       crumbs.push({ label, href: currentHref });
     });
 

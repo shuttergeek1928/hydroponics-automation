@@ -18,7 +18,9 @@ import {
   X,
   Droplet,
   Signal,
-  WifiOff
+  WifiOff,
+  Zap,
+  Sprout
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -49,6 +51,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
   const navItems = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Devices", href: "/devices", icon: Cpu },
+    { name: "Circuit Diagram", href: "/circuit", icon: Zap },
     { name: "Sensors", href: "/sensors", icon: Activity },
     { name: "Controls", href: "/controls", icon: Sliders },
     {
@@ -58,6 +61,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
       badge: alertCount > 0 ? alertCount : undefined
     },
     { name: "Analytics", href: "/analytics", icon: BarChart3 },
+    { name: "Plant Growth Tracker", href: "/growth", icon: Sprout },
     { name: "Automation", href: "/schedules", icon: Clock },
     { name: "Settings", href: "/settings", icon: SettingsIcon }
   ];

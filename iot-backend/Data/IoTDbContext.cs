@@ -13,6 +13,7 @@ namespace IoTBackend.Data
         public DbSet<SystemSettings> SystemSettings { get; set; }
         public DbSet<AutomationSchedule> AutomationSchedules { get; set; }
         public DbSet<AlertLog> AlertLogs { get; set; }
+        public DbSet<GrowthObservation> GrowthObservations { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

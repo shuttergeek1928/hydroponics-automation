@@ -6,7 +6,8 @@ import {
   AlertLog, 
   AutomationSchedule, 
   SystemStats,
-  SystemSettings
+  SystemSettings,
+  GrowthObservation
 } from './types';
 import { 
   mockDevices, 
@@ -446,6 +447,101 @@ export function clearActiveCommandsQueue(): void {
   }
 }
 
+export async function getCircuitLayout(deviceId: string) {
+  const useMock = getUseMock();
+  if (useMock) {
+    const data = localStorage.getItem(`hf_circuit_backend_${deviceId}`);
+    return data ? JSON.parse(data) : null;
+  }
+  try {
+    return await apiFetch(`/api/circuit/${deviceId}`);
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function saveCircuitLayout(deviceId: string, componentsJson: string, wiresJson: string) {
+  const useMock = getUseMock();
+  const payload = { deviceId, componentsJson, wiresJson, updatedAt: new Date().toISOString() };
+  if (useMock) {
+    localStorage.setItem(`hf_circuit_backend_${deviceId}`, JSON.stringify(payload));
+    return payload;
+  }
+  return await apiFetch(`/api/circuit/${deviceId}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+const defaultGrowthObservations: GrowthObservation[] = [
+  {
+    id: 'obs-1',
+    date: new Date().toISOString().split('T')[0],
+    plantName: 'Butterhead Lettuce (NFT-A)',
+    stage: 'Vegetative',
+    heightCm: 12.5,
+    health: 'Excellent',
+    notes: 'Strong root development, vibrant green leaves with no tip burn.',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'obs-2',
+    date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+    plantName: 'Sweet Basil (DWC-B)',
+    stage: 'Seedling',
+    heightCm: 4.2,
+    health: 'Good',
+    notes: 'First true leaves expanding well. Adjusted LED height slightly.',
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+];
+
+export async function getGrowthObservations(): Promise<GrowthObservation[]> {
+  try {
+    const data = await apiFetch<GrowthObservation[]>('/api/growth');
+    setStoredItem('hydroflow_growth_logs', data);
+    return data;
+  } catch (e) {
+    console.warn('Backend unavailable for growth observations, using local cache:', e);
+    return getStoredItem<GrowthObservation[]>('hydroflow_growth_logs', defaultGrowthObservations);
+  }
+}
+
+export async function addGrowthObservation(obs: Omit<GrowthObservation, 'id' | 'createdAt'>): Promise<GrowthObservation> {
+  try {
+    const created = await apiFetch<GrowthObservation>('/api/growth', {
+      method: 'POST',
+      body: JSON.stringify(obs),
+    });
+    const current = getStoredItem<GrowthObservation[]>('hydroflow_growth_logs', []);
+    setStoredItem('hydroflow_growth_logs', [created, ...current]);
+    return created;
+  } catch (e) {
+    console.warn('Backend unavailable, saving growth observation to local cache:', e);
+    const current = getStoredItem<GrowthObservation[]>('hydroflow_growth_logs', defaultGrowthObservations);
+    const created: GrowthObservation = {
+      ...obs,
+      id: `obs-${Math.random().toString(36).substring(2, 9)}`,
+      createdAt: new Date().toISOString(),
+    };
+    const updated = [created, ...current];
+    setStoredItem('hydroflow_growth_logs', updated);
+    return created;
+  }
+}
+
+export async function deleteGrowthObservation(id: string): Promise<void> {
+  try {
+    const url = `${getBaseUrl()}/api/growth/${id}`;
+    await fetch(url, { method: 'DELETE' });
+  } catch (e) {
+    console.warn('Backend unavailable when deleting growth observation:', e);
+  }
+  const current = getStoredItem<GrowthObservation[]>('hydroflow_growth_logs', defaultGrowthObservations);
+  const updated = current.filter(o => o.id !== id);
+  setStoredItem('hydroflow_growth_logs', updated);
+}
+
 // Unified api object representing the default and named api helper
 export const api = {
   getDevices,
@@ -465,8 +561,13 @@ export const api = {
   getCommands,
   generateCsvExport,
   getActiveCommandsQueue,
-  clearActiveCommandsQueue
+  clearActiveCommandsQueue,
+  getCircuitLayout,
+  saveCircuitLayout,
+  getGrowthObservations,
+  addGrowthObservation,
+  deleteGrowthObservation
 };
 
 // Re-export type definitions for import simplicity
-export type { Device, SensorReading, DeviceCommand, HydroSystem, AlertLog, AutomationSchedule, SystemStats, SystemSettings };
+export type { Device, SensorReading, DeviceCommand, HydroSystem, AlertLog, AutomationSchedule, SystemStats, SystemSettings, GrowthObservation };

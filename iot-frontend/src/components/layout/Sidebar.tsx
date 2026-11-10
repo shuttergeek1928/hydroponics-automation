@@ -18,7 +18,8 @@ import {
   Sprout,
   User,
   Activity,
-  LogOut
+  LogOut,
+  Zap
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -32,10 +33,12 @@ interface SidebarProps {
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Devices", href: "/devices", icon: Cpu },
+  { label: "Circuit Diagram", href: "/circuit", icon: Zap },
   { label: "Sensors", href: "/sensors", icon: Gauge },
   { label: "Controls", href: "/controls", icon: Sliders },
   { label: "Alerts", href: "/alerts", icon: Bell, badge: 3 },
   { label: "Analytics", href: "/analytics", icon: LineChart },
+  { label: "Plant Growth Tracker", href: "/growth", icon: Sprout },
   { label: "Schedules", href: "/schedules", icon: Calendar },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
