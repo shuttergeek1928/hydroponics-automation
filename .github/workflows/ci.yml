@@ -20,13 +20,13 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore Dependencies
-        run: dotnet restore IoTBackend/IoTBackend.csproj
+        run: dotnet restore iot-backend/IoTBackend.csproj
 
       - name: Build Backend
-        run: dotnet build IoTBackend/IoTBackend.csproj --configuration Release --no-restore
+        run: dotnet build iot-backend/IoTBackend.csproj --configuration Release --no-restore
 
       - name: Build Simulator
-        run: dotnet build IoTSimulator/IoTSimulator.csproj --configuration Release
+        run: dotnet build iot-simulator/IoTSimulator.csproj --configuration Release
 
   frontend-build:
     name: Build & Lint Next.js Frontend

@@ -52,6 +52,9 @@ namespace IoTBackend.Controllers
         [HttpPut]
         public async Task<IActionResult> UpdateSettings([FromBody] SystemSettings newSettings)
         {
+            var error = Validate(newSettings);
+            if (error != null) return BadRequest(error);
+
             var settings = await _context.SystemSettings.FirstOrDefaultAsync();
 
             if (settings == null)
@@ -78,6 +81,17 @@ namespace IoTBackend.Controllers
 
             await _context.SaveChangesAsync();
             return Ok(settings);
+        }
+
+        private static string? Validate(SystemSettings s)
+        {
+            if (s.PhMin >= s.PhMax) return "pH minimum must be lower than maximum.";
+            if (s.TdsMin >= s.TdsMax) return "TDS minimum must be lower than maximum.";
+            if (s.TempMin >= s.TempMax) return "Temperature minimum must be lower than maximum.";
+            if (s.HumidityMin > s.HumidityMax) return "Humidity minimum must not exceed maximum.";
+            if (s.PhMin < 0 || s.PhMax > 14) return "pH thresholds must be within 0-14.";
+            if (s.CalibrationTdsFactor <= 0) return "TDS calibration factor must be greater than 0.";
+            return null;
         }
     }
 }

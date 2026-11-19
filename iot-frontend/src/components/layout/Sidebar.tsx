@@ -16,18 +16,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Sprout,
-  User,
-  Activity,
-  LogOut,
   Zap
 } from "lucide-react";
 import clsx from "clsx";
+import type { ShellStatus } from "@/lib/useShellStatus";
 
 interface SidebarProps {
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
   isMobileOpen: boolean;
   setIsMobileOpen: (open: boolean) => void;
+  status: ShellStatus;
 }
 
 const navItems = [
@@ -36,7 +35,7 @@ const navItems = [
   { label: "Circuit Diagram", href: "/circuit", icon: Zap },
   { label: "Sensors", href: "/sensors", icon: Gauge },
   { label: "Controls", href: "/controls", icon: Sliders },
-  { label: "Alerts", href: "/alerts", icon: Bell, badge: 3 },
+  { label: "Alerts", href: "/alerts", icon: Bell },
   { label: "Analytics", href: "/analytics", icon: LineChart },
   { label: "Plant Growth Tracker", href: "/growth", icon: Sprout },
   { label: "Schedules", href: "/schedules", icon: Calendar },
@@ -48,8 +47,16 @@ export default function Sidebar({
   setIsCollapsed,
   isMobileOpen,
   setIsMobileOpen,
+  status,
 }: SidebarProps) {
   const pathname = usePathname();
+  const health =
+    !status.connected ? { label: "Backend Unreachable", dot: "bg-danger" }
+    : status.criticalAlerts > 0 ? { label: "Critical Alerts", dot: "bg-danger" }
+    : status.activeAlerts > 0 ? { label: "Attention Needed", dot: "bg-warning" }
+    : status.totalDevices === 0 ? { label: "No Devices", dot: "bg-slate-400" }
+    : { label: "System Nominal", dot: "bg-accent" };
+  const fmt = (v: number | null, digits: number, unit: string) => (v === null ? "—" : `${v.toFixed(digits)}${unit}`);
 
   // Find if a path is active
   const isActive = (href: string) => {
@@ -174,14 +181,14 @@ export default function Sidebar({
                 )}
 
                 {/* Badge alert count */}
-                {item.badge && (
+                {item.href === "/alerts" && status.activeAlerts > 0 && (
                   <span
                     className={clsx(
                       "relative z-10 ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white",
                       isCollapsed && "absolute -top-1.5 -right-1"
                     )}
                   >
-                    {item.badge}
+                    {status.activeAlerts}
                   </span>
                 )}
 
@@ -196,79 +203,59 @@ export default function Sidebar({
           })}
         </nav>
 
-        {/* Active System Indicator */}
+        {/* Live System Indicator */}
         <div className="px-3 py-2 border-t border-border">
           {isCollapsed ? (
             <div className="flex justify-center py-2 group relative">
               <span className="relative flex h-3.5 w-3.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-accent"></span>
+                <span className={clsx("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", health.dot)}></span>
+                <span className={clsx("relative inline-flex rounded-full h-3.5 w-3.5", health.dot)}></span>
               </span>
               <div className="pointer-events-none absolute left-16 z-50 rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-md transition-opacity duration-200 group-hover:opacity-100 whitespace-nowrap">
-                <div className="font-semibold text-accent">SYSTEM NOMINAL</div>
-                <div className="text-[10px] text-slate-300">EC: 1.8 | pH: 6.2</div>
+                <div className="font-semibold text-accent uppercase">{health.label}</div>
+                <div className="text-[10px] text-slate-300">
+                  TDS: {fmt(status.averageTds, 0, " ppm")} | pH: {fmt(status.averagePh, 1, "")}
+                </div>
               </div>
             </div>
           ) : (
             <div className="glassmorphism-card rounded-xl p-3 border border-border/80">
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent"></span>
+                  <span className={clsx("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", health.dot)}></span>
+                  <span className={clsx("relative inline-flex rounded-full h-2.5 w-2.5", health.dot)}></span>
                 </span>
                 <span className="text-xs font-semibold text-text uppercase tracking-wider">
-                  System Nominal
+                  {health.label}
                 </span>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-1 text-[11px] font-mono text-text-muted">
                 <div className="flex flex-col">
-                  <span>EC Level</span>
-                  <span className="font-semibold text-primary">1.8 mS</span>
+                  <span>TDS</span>
+                  <span className="font-semibold text-primary">{fmt(status.averageTds, 0, " ppm")}</span>
                 </div>
                 <div className="flex flex-col">
                   <span>pH Level</span>
-                  <span className="font-semibold text-primary">6.2 pH</span>
+                  <span className="font-semibold text-primary">{fmt(status.averagePh, 2, " pH")}</span>
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* User Status Profile */}
+        {/* Workspace profile (no authentication yet, so no logout action) */}
         <div className="border-t border-border p-3">
-          <div
-            className={clsx(
-              "flex items-center justify-between gap-3",
-              isCollapsed && "justify-center"
-            )}
-          >
-            <div className="flex items-center gap-3 overflow-hidden">
-              {/* User Avatar */}
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-primary to-accent font-semibold text-white text-sm shadow-inner">
-                AG
-              </div>
-
-              {/* User Identity */}
-              {!isCollapsed && (
-                <div className="flex flex-col min-w-0">
-                  <span className="truncate text-sm font-semibold text-text">
-                    Dr. Alana Green
-                  </span>
-                  <span className="truncate text-[10px] text-text-muted">
-                    Master Grower
-                  </span>
-                </div>
-              )}
+          <div className={clsx("flex items-center gap-3 overflow-hidden", isCollapsed && "justify-center")}>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-primary to-accent font-semibold text-white text-sm shadow-inner">
+              HF
             </div>
-
-            {/* Logout/Actions button */}
             {!isCollapsed && (
-              <button
-                className="h-8 w-8 flex items-center justify-center rounded-lg text-text-muted hover:bg-rose-50 hover:text-danger transition-colors duration-150"
-                aria-label="Logout"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
+              <div className="flex flex-col min-w-0">
+                <span className="truncate text-sm font-semibold text-text">HydroFlow Workspace</span>
+                <span className="truncate text-[10px] text-text-muted">
+                  {status.mock ? "Demo data (mock mode)" : "Connected to backend"}
+                </span>
+              </div>
             )}
           </div>
         </div>
