@@ -22,21 +22,26 @@ import {
 } from "lucide-react";
 import { api, Device, AlertLog, SensorReading } from "@/lib/api";
 import PageTransition from "@/components/PageTransition";
+import { useToast } from "@/components/ui/Toast";
 
 export default function DashboardHome() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [quickActionLoading, setQuickActionLoading] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const fetchData = async () => {
     try {
       const devList = await api.getDevices();
       setDevices(devList);
-      const alertList = api.getAlerts();
-      setAlerts(alertList.filter(a => !a.resolved).slice(0, 4));
+      const alertList = await api.fetchAlerts();
+      setAlerts(alertList.filter(a => !a.resolved));
+      setLoadError(null);
     } catch (err) {
       console.error("Error loading dashboard data", err);
+      setLoadError(err instanceof Error ? err.message : "Failed to load dashboard data");
     } finally {
       setLoading(false);
     }
@@ -53,20 +58,25 @@ export default function DashboardHome() {
     try {
       const onlineDevices = devices.filter(d => d.isOnline);
       if (onlineDevices.length === 0) {
-        alert("No online devices found to execute commands.");
+        toast("No online devices found to execute commands.", "error");
         return;
       }
       
       // Send command to all online devices
-      await Promise.all(
+      const results = await Promise.all(
         onlineDevices.map(d => api.queueCommand(d.deviceId, commandType, value))
       );
-      
+      const failed = results.filter(r => r.status === "Failed").length;
+
       await fetchData();
-      alert(`Quick Action executed successfully: ${actionId}`);
+      if (failed > 0) {
+        toast(`${actionId}: ${failed} of ${results.length} devices failed to accept the command.`, "error");
+      } else {
+        toast(`${actionId} queued for ${results.length} device${results.length === 1 ? "" : "s"}.`, "success");
+      }
     } catch (err) {
       console.error(err);
-      alert("Failed to execute quick action.");
+      toast(err instanceof Error ? err.message : "Failed to execute quick action.", "error");
     } finally {
       setQuickActionLoading(null);
     }
@@ -78,7 +88,7 @@ export default function DashboardHome() {
   const systemHealth =
     alerts.some(a => a.severity === "critical")
       ? "critical"
-      : alerts.length > 0
+      : alerts.length > 0 || (devices.length > 0 && onlineDevices.length === 0)
       ? "warning"
       : "healthy";
 
@@ -138,6 +148,12 @@ export default function DashboardHome() {
         </div>
       </div>
 
+      {loadError && (
+        <div className="mb-6 rounded-xl border border-danger/20 bg-rose-50 px-4 py-3 text-xs font-semibold text-danger">
+          {loadError}
+        </div>
+      )}
+
       {loading && devices.length === 0 ? (
         <div className="flex-1 flex items-center justify-center min-h-[300px]">
           <div className="text-center">
@@ -181,7 +197,9 @@ export default function DashboardHome() {
                   {systemHealth === "critical"
                     ? "One or more sensors are breaching dangerous operating thresholds. Act immediately."
                     : systemHealth === "warning"
-                    ? "Some metrics have drifted outside ideal cultivation parameters."
+                    ? onlineDevices.length === 0
+                      ? "No controllers are reporting. Check device power and network connectivity."
+                      : "Some metrics have drifted outside ideal cultivation parameters."
                     : `${onlineDevices.length} of ${devices.length} IoT controllers online. Continuous flow systems working normally.`}
                 </p>
               </div>
@@ -400,7 +418,7 @@ export default function DashboardHome() {
                   >
                     <div className="flex items-center gap-2">
                       <Droplet className="w-4 h-4 text-primary" />
-                      <span>Start All Pumps (15m Run)</span>
+                      <span>Start All Pumps (15s Run)</span>
                     </div>
                     {quickActionLoading === "water_all" ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <span>Trigger</span>}
                   </button>
@@ -431,7 +449,11 @@ export default function DashboardHome() {
 
                   <button
                     disabled={quickActionLoading !== null}
-                    onClick={() => handleQuickAction("restart_all", "restart", "true")}
+                    onClick={() => {
+                      if (window.confirm("Restart all online controllers? Pumps and lights will pause until they reconnect.")) {
+                        handleQuickAction("restart_all", "restart", "true");
+                      }
+                    }}
                     className="w-full flex items-center justify-between p-3 rounded-xl border border-danger/10 bg-danger/5 hover:bg-danger/10 text-danger transition-all text-xs font-semibold"
                   >
                     <div className="flex items-center gap-2">
@@ -460,7 +482,7 @@ export default function DashboardHome() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {alerts.map((alert) => (
+                    {alerts.slice(0, 4).map((alert) => (
                       <div
                         key={alert.id}
                         className={`p-3 rounded-xl border text-xs flex flex-col gap-1.5 ${

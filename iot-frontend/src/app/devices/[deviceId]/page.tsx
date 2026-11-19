@@ -34,6 +34,7 @@ import {
 } from "recharts";
 import { api, Device, DeviceCommand, SensorReading } from "@/lib/api";
 import PageTransition from "@/components/PageTransition";
+import { useToast } from "@/components/ui/Toast";
 
 export default function DeviceDetailPage({ params }: { params: Promise<{ deviceId: string }> }) {
   const { deviceId } = use(params);
@@ -43,6 +44,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ deviceI
   const [commandLoading, setCommandLoading] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"ph" | "tds" | "temperature" | "waterLevel" | "dissolvedOxygen" | "humidity">("temperature");
   const [mounted, setMounted] = useState(false);
+  const { toast } = useToast();
 
   const fetchDevice = async () => {
     try {
@@ -67,14 +69,19 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ deviceI
   }, [deviceId]);
 
   const handleCommand = async (type: DeviceCommand["commandType"], value: string, label: string) => {
+    if (type === "restart" && !window.confirm("Restart this controller? Pumps and lights will pause until it reconnects.")) return;
     setCommandLoading(label);
     try {
-      await api.queueCommand(deviceId, type, value);
+      const cmd = await api.queueCommand(deviceId, type, value);
+      if (cmd.status === "Failed") {
+        toast("Command failed: the controller is offline.", "error");
+      } else {
+        toast(`Command ${type} = ${value} ${cmd.status === "Executed" ? "executed" : "queued"}.`, "success");
+      }
       await fetchDevice();
-      alert(`Command queued successfully: ${type} = ${value}`);
     } catch (err) {
       console.error(err);
-      alert("Failed to queue command.");
+      toast(err instanceof Error ? err.message : "Failed to queue command.", "error");
     } finally {
       setCommandLoading(null);
     }
@@ -97,7 +104,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ deviceI
         <div className="text-center py-20 bg-white rounded-3xl border border-border">
           <AlertTriangle className="w-12 h-12 text-danger mx-auto mb-4" />
           <h2 className="text-xl font-bold text-text">Device Not Found</h2>
-          <p className="text-text-muted mt-2 mb-6">The controller with ID "{deviceId}" does not exist.</p>
+          <p className="text-text-muted mt-2 mb-6">The controller with ID &quot;{deviceId}&quot; does not exist.</p>
           <Link href="/devices" className="btn-primary">
             Back to Devices
           </Link>
@@ -292,7 +299,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ deviceI
               {Object.entries(metricConfigs).map(([key, config]) => (
                 <button
                   key={key}
-                  onClick={() => setActiveTab(key as any)}
+                  onClick={() => setActiveTab(key as typeof activeTab)}
                   className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
                     activeTab === key ? "bg-white text-primary-dark shadow-xs" : "text-text-muted hover:text-text"
                   }`}
@@ -329,7 +336,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ deviceI
                     />
                     <Tooltip
                       labelFormatter={(label) => new Date(label).toLocaleString()}
-                      formatter={(value: any) => [`${value}${currentMetric.unit}`, currentMetric.name]}
+                      formatter={(value) => [`${value}${currentMetric.unit}`, currentMetric.name]}
                       contentStyle={{
                         background: "rgba(255, 255, 255, 0.95)",
                         border: "1px solid var(--color-border)",

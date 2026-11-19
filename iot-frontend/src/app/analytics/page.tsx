@@ -28,10 +28,12 @@ import {
 } from "recharts";
 import { api, Device, generateCsvExport } from "@/lib/api";
 import PageTransition from "@/components/PageTransition";
+import { useToast } from "@/components/ui/Toast";
 
 export default function AnalyticsPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [chartType, setChartType] = useState<"nutrients" | "climate">("climate");
   const [mounted, setMounted] = useState(false);
@@ -58,7 +60,7 @@ export default function AnalyticsPage() {
   const handleCsvExport = () => {
     const device = devices.find(d => d.deviceId === selectedDeviceId);
     if (!device) {
-      alert("Please select a device to export.");
+      toast("Please select a device to export.", "error");
       return;
     }
 

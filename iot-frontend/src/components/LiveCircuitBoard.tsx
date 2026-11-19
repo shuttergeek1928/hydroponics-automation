@@ -206,7 +206,7 @@ export default function LiveCircuitBoard({ device }: LiveCircuitBoardProps) {
       (p) => p.pinType === 'gpio' && !components.some((c) => c.pinKey === p.id)
     );
     const newComp: PlacedComponent = {
-      instanceId: `c_${Date.now()}`,
+      instanceId: `c_${crypto.randomUUID()}`,
       type,
       name,
       pinKey: availablePin?.id || 'gpio-14',

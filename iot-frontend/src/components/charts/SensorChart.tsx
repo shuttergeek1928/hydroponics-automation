@@ -21,8 +21,21 @@ export interface ChartSeries {
   yAxisId?: "left" | "right";
 }
 
+interface TooltipEntry {
+  dataKey?: string | number;
+  value?: number | string;
+  color?: string;
+  name?: string;
+}
+
+interface LegendEntry {
+  dataKey?: unknown;
+  value?: string;
+  color?: string;
+}
+
 interface SensorChartProps {
-  data: any[];
+  data: Record<string, unknown>[];
   series: ChartSeries[];
   xAxisKey?: string;
   height?: number | string;
@@ -44,7 +57,7 @@ export const SensorChart: React.FC<SensorChartProps> = ({
     setMounted(true);
   }, []);
 
-  const formatXAxis = (tickItem: any) => {
+  const formatXAxis = (tickItem: string | number) => {
     try {
       const date = typeof tickItem === "number" ? new Date(tickItem) : parseISO(tickItem);
       if (isValid(date)) {
@@ -56,11 +69,11 @@ export const SensorChart: React.FC<SensorChartProps> = ({
     }
   };
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipEntry[]; label?: string | number }) => {
     if (active && payload && payload.length) {
       let formattedLabel = String(label);
       try {
-        const date = typeof label === "number" ? new Date(label) : parseISO(label);
+        const date = typeof label === "number" ? new Date(label) : parseISO(String(label));
         if (isValid(date)) {
           formattedLabel = format(date, "MMM dd, yyyy HH:mm:ss");
         }
@@ -73,7 +86,7 @@ export const SensorChart: React.FC<SensorChartProps> = ({
           <p className="font-semibold text-gray-500 mb-0.5 border-b border-gray-100 pb-1">
             {formattedLabel}
           </p>
-          {payload.map((item: any, index: number) => {
+          {payload.map((item, index: number) => {
             const currentSeries = series.find((s) => s.key === item.dataKey);
             const unit = currentSeries ? currentSeries.unit : "";
             const name = currentSeries ? currentSeries.name : item.name;
@@ -98,11 +111,11 @@ export const SensorChart: React.FC<SensorChartProps> = ({
     return null;
   };
 
-  const renderCustomLegend = (props: any) => {
-    const { payload } = props;
+  const renderCustomLegend = (props: { payload?: readonly LegendEntry[] }) => {
+    const payload = props.payload ?? [];
     return (
       <div className="flex justify-center flex-wrap gap-x-6 gap-y-2 mt-4 select-none">
-        {payload.map((entry: any, index: number) => {
+        {payload.map((entry, index: number) => {
           const currentSeries = series.find((s) => s.key === entry.dataKey);
           return (
             <div
@@ -194,7 +207,7 @@ export const SensorChart: React.FC<SensorChartProps> = ({
             />
           )}
 
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={(props) => CustomTooltip(props as unknown as Parameters<typeof CustomTooltip>[0])} />
 
           {series.map((s) => (
             <Area

@@ -17,12 +17,14 @@ import {
 } from "lucide-react";
 import { api, AlertLog, SystemSettings } from "@/lib/api";
 import PageTransition from "@/components/PageTransition";
+import { useToast } from "@/components/ui/Toast";
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const { toast } = useToast();
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("active");
 
   // Threshold form inputs
@@ -33,58 +35,88 @@ export default function AlertsPage() {
   const [tempMin, setTempMin] = useState("");
   const [tempMax, setTempMax] = useState("");
 
-  const fetchData = () => {
+  const fetchData = async (initForm = false) => {
     try {
-      const allAlerts = api.getAlerts();
-      setAlerts(allAlerts);
+      setAlerts(await api.fetchAlerts());
 
-      const sysSettings = api.getSettings();
+      let sysSettings = api.getSettings();
+      try {
+        sysSettings = await api.fetchSettings();
+      } catch {
+        // keep cached thresholds if settings cannot be refreshed
+      }
       setSettings(sysSettings);
-      
-      // Initialize form values
-      setPhMin(sysSettings.phMin.toString());
-      setPhMax(sysSettings.phMax.toString());
-      setTdsMin(sysSettings.tdsMin.toString());
-      setTdsMax(sysSettings.tdsMax.toString());
-      setTempMin(sysSettings.tempMin.toString());
-      setTempMax(sysSettings.tempMax.toString());
+
+      // Only overwrite the form on first load or after saving, never while the user is typing
+      if (initForm) {
+        setPhMin(sysSettings.phMin.toString());
+        setPhMax(sysSettings.phMax.toString());
+        setTdsMin(sysSettings.tdsMin.toString());
+        setTdsMax(sysSettings.tdsMax.toString());
+        setTempMin(sysSettings.tempMin.toString());
+        setTempMax(sysSettings.tempMax.toString());
+      }
     } catch (err) {
       console.error(err);
+      toast(err instanceof Error ? err.message : "Failed to load alerts.", "error");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData(true);
+    const interval = setInterval(() => fetchData(), 10000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleDismiss = (id: string) => {
-    api.dismissAlert(id);
-    fetchData();
+  const handleDismiss = async (id: string) => {
+    try {
+      await api.dismissAlert(id);
+      await fetchData();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to resolve alert.", "error");
+    }
   };
 
-  const handleClearResolved = () => {
-    api.clearResolvedAlerts();
-    fetchData();
+  const handleClearResolved = async () => {
+    try {
+      await api.clearResolvedAlerts();
+      await fetchData();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to clear resolved alerts.", "error");
+    }
   };
 
-  const handleSaveThresholds = (e: React.FormEvent) => {
+  const handleSaveThresholds = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!settings) return;
 
-    api.updateSettings({
+    const values = {
       phMin: parseFloat(phMin),
       phMax: parseFloat(phMax),
-      tdsMin: parseInt(tdsMin),
-      tdsMax: parseInt(tdsMax),
+      tdsMin: parseFloat(tdsMin),
+      tdsMax: parseFloat(tdsMax),
       tempMin: parseFloat(tempMin),
       tempMax: parseFloat(tempMax)
-    });
+    };
+    if (Object.values(values).some(v => !Number.isFinite(v))) {
+      toast("Every threshold needs a valid number.", "error");
+      return;
+    }
+    if (values.phMin >= values.phMax || values.tdsMin >= values.tdsMax || values.tempMin >= values.tempMax) {
+      toast("Each minimum threshold must be lower than its maximum.", "error");
+      return;
+    }
 
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
-    fetchData();
+    try {
+      await api.updateSettings(values);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      await fetchData(true);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to save thresholds.", "error");
+    }
   };
 
   // Filter logic
@@ -107,7 +139,7 @@ export default function AlertsPage() {
           <p className="text-text-muted mt-1">Configure warning thresholds and handle system notifications.</p>
         </div>
         <button
-          onClick={fetchData}
+          onClick={() => fetchData()}
           className="btn-secondary text-xs h-10 px-4 flex items-center gap-2 self-start md:self-auto"
         >
           <RefreshCw className="w-3.5 h-3.5" />

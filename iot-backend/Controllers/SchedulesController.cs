@@ -23,62 +23,6 @@ namespace IoTBackend.Controllers
         public async Task<IActionResult> GetSchedules()
         {
             var schedules = await _context.AutomationSchedules.ToListAsync();
-            
-            // Seed defaults if empty
-            if (!schedules.Any())
-            {
-                var defaults = new List<AutomationSchedule>
-                {
-                    new AutomationSchedule
-                    {
-                        Id = "sch-1",
-                        Name = "NFT Water Pump Cycle",
-                        Description = "Runs peristaltic pump for nutrient recirculation",
-                        Type = "watering",
-                        TimeStart = "08:00",
-                        Duration = 15,
-                        Active = true,
-                        TargetDevice = "ESP32_001"
-                    },
-                    new AutomationSchedule
-                    {
-                        Id = "sch-2",
-                        Name = "Daylight LED Cycle",
-                        Description = "Maintains 16-hour lighting cycle for photosynthesis",
-                        Type = "lighting",
-                        TimeStart = "06:00",
-                        TimeEnd = "22:00",
-                        Active = true,
-                        TargetDevice = "ESP32_001"
-                    },
-                    new AutomationSchedule
-                    {
-                        Id = "sch-3",
-                        Name = "DWC Aeration Timer",
-                        Description = "Keeps oxygen levels optimized in reservoir",
-                        Type = "watering",
-                        TimeStart = "00:00",
-                        Duration = 60,
-                        Active = true,
-                        TargetDevice = "ESP32_002"
-                    },
-                    new AutomationSchedule
-                    {
-                        Id = "sch-4",
-                        Name = "Nutrient Dosing Program",
-                        Description = "Calibrates pH down dosing pumps",
-                        Type = "nutrient",
-                        TimeStart = "07:00",
-                        Duration = 2,
-                        Active = false,
-                        TargetDevice = "ESP32_003"
-                    }
-                };
-
-                _context.AutomationSchedules.AddRange(defaults);
-                await _context.SaveChangesAsync();
-                schedules = defaults;
-            }
 
             return Ok(schedules);
         }
@@ -86,6 +30,9 @@ namespace IoTBackend.Controllers
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] AutomationSchedule schedule)
         {
+            var error = Validate(schedule);
+            if (error != null) return BadRequest(error);
+
             if (string.IsNullOrEmpty(schedule.Id))
             {
                 schedule.Id = $"sch-{System.Guid.NewGuid().ToString().Substring(0, 8)}";
@@ -102,6 +49,9 @@ namespace IoTBackend.Controllers
             var existing = await _context.AutomationSchedules.FindAsync(id);
             if (existing == null) return NotFound();
 
+            var error = Validate(schedule);
+            if (error != null) return BadRequest(error);
+
             existing.Name = schedule.Name;
             existing.Description = schedule.Description;
             existing.Type = schedule.Type;
@@ -113,6 +63,30 @@ namespace IoTBackend.Controllers
 
             await _context.SaveChangesAsync();
             return Ok(existing);
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(string id)
+        {
+            var existing = await _context.AutomationSchedules.FindAsync(id);
+            if (existing == null) return NotFound();
+            _context.AutomationSchedules.Remove(existing);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+        private static string? Validate(AutomationSchedule s)
+        {
+            if (string.IsNullOrWhiteSpace(s.Name)) return "Name is required.";
+            if (string.IsNullOrWhiteSpace(s.TargetDevice)) return "Target device is required.";
+            if (s.Type != "watering" && s.Type != "lighting" && s.Type != "nutrient") return "Type must be watering, lighting or nutrient.";
+            if (!System.TimeSpan.TryParseExact(s.TimeStart, @"hh\:mm", null, out _)) return "TimeStart must be HH:mm.";
+            if (s.Type == "lighting")
+            {
+                if (!System.TimeSpan.TryParseExact(s.TimeEnd ?? "", @"hh\:mm", null, out _)) return "TimeEnd must be HH:mm for lighting.";
+            }
+            else if (s.Duration is null or < 1 or > 5) return "Duration must be 1-5 minutes.";
+            return null;
         }
     }
 }

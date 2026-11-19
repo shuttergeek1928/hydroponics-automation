@@ -80,6 +80,8 @@ const getAutoIcon = (name: string): LucideIcon => {
   return Activity;
 };
 
+const IconRender = ({ icon: Icon, ...rest }: { icon: LucideIcon; size?: number; className?: string }) => <Icon {...rest} />;
+
 export const SensorCard: React.FC<SensorCardProps> = ({
   name,
   value,
@@ -159,7 +161,7 @@ export const SensorCard: React.FC<SensorCardProps> = ({
       <div className="flex items-start justify-between mb-3 relative z-10">
         <div className="flex items-center gap-2">
           <div className={clsx("p-2 rounded-lg bg-white border border-gray-100 shadow-sm text-gray-600")}>
-            <SensorIcon size={18} className="stroke-[2px]" />
+            <IconRender icon={SensorIcon} size={18} className="stroke-[2px]" />
           </div>
           <span className="text-sm font-medium text-gray-500 tracking-tight truncate max-w-[120px]">
             {name}

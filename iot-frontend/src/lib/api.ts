@@ -25,22 +25,27 @@ export function getUseMock(): boolean {
   const settings = localStorage.getItem('hf_settings');
   if (settings) {
     try {
-      return JSON.parse(settings).useMock;
-    } catch (e) {}
+      const parsed = JSON.parse(settings);
+      if (typeof parsed.useMock === 'boolean') return parsed.useMock;
+    } catch {}
   }
   return process.env.NEXT_PUBLIC_USE_MOCK === 'false' ? false : true;
 }
 
 // Helper: Determine dynamic backend URL
 export function getBaseUrl(): string {
-  if (typeof window === 'undefined') return 'http://localhost:5119';
-  const settings = localStorage.getItem('hf_settings');
-  if (settings) {
-    try {
-      return JSON.parse(settings).backendUrl;
-    } catch (e) {}
+  let url = 'http://localhost:5119';
+  if (typeof window !== 'undefined') {
+    const settings = localStorage.getItem('hf_settings');
+    if (settings) {
+      try {
+        const parsed = JSON.parse(settings);
+        if (typeof parsed.backendUrl === 'string' && parsed.backendUrl.trim()) url = parsed.backendUrl.trim();
+      } catch {}
+    }
   }
-  return 'http://localhost:5119';
+  // Paths already include /api, so tolerate users pasting it into the host field
+  return url.replace(/\/+$/, '').replace(/\/api$/, '');
 }
 
 // Artificial delay to simulate network latency for loading skeletons
@@ -49,18 +54,85 @@ const delay = (ms = 300) => new Promise(resolve => setTimeout(resolve, ms));
 // Helper for HTTP requests in real mode
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+  } catch {
+    throw new Error(`Cannot reach backend at ${getBaseUrl()}. Check that it is running and the URL in Settings is correct.`);
   }
-  return response.json() as Promise<T>;
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body = await response.json();
+      detail = body?.message || body?.title || '';
+    } catch {}
+    throw new Error(detail || `API Error: ${response.status} ${response.statusText}`);
+  }
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
+
+// The backend stores UTC timestamps but serializes them without a "Z" suffix,
+// which browsers would otherwise parse as local time.
+function toIso(value?: string | null): string {
+  if (!value) return new Date().toISOString();
+  return /(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`;
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function normalizeReading(r: any): SensorReading {
+  return {
+    ...r,
+    id: String(r.id),
+    timestamp: toIso(r.timestamp),
+    moisture: r.moisture ?? r.sensorValue,
+    pumpState: r.pumpState === 'on' ? 'on' : 'off',
+    ledState: r.ledState === 'on' ? 'on' : 'off',
+  };
+}
+
+function normalizeCommand(c: any): DeviceCommand {
+  return {
+    ...c,
+    id: String(c.id),
+    createdAt: toIso(c.createdAt),
+    executedAt: c.executedAt ? toIso(c.executedAt) : undefined,
+  };
+}
+
+function normalizeDevice(d: any): Device {
+  return {
+    ...d,
+    name: d.name || d.deviceId,
+    system: d.system || 'Unassigned',
+    ipAddress: d.ipAddress || '—',
+    macAddress: d.macAddress || '—',
+    firmwareVersion: d.firmwareVersion || '—',
+    lastSeen: toIso(d.lastSeen),
+    sensorReadings: (d.sensorReadings || [])
+      .map(normalizeReading)
+      .sort((a: SensorReading, b: SensorReading) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    commands: (d.commands || []).map(normalizeCommand),
+  };
+}
+
+function normalizeAlert(a: any): AlertLog {
+  return {
+    ...a,
+    timestamp: toIso(a.timestamp),
+    resolvedAt: a.resolvedAt ? toIso(a.resolvedAt) : undefined,
+    sensorType: a.sensorType || 'general',
+  };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 
 // Initialize LocalStorage Mock Database
 function initMockDb() {
@@ -128,7 +200,7 @@ function applyCommandOverrides(deviceId: string, readings: SensorReading[]): Sen
     if (activePumpCmd) {
       if (activePumpCmd.commandType === 'pump_duration') {
         const cmdTime = new Date(activePumpCmd.createdAt).getTime();
-        const durationMs = parseInt(activePumpCmd.commandValue) * 60 * 1000;
+        const durationMs = parseInt(activePumpCmd.commandValue) * 1000; // pump_duration is in seconds
         if (readingTime >= cmdTime && readingTime <= cmdTime + durationMs) {
           updatedReading.pumpState = 'on';
         } else {
@@ -157,11 +229,12 @@ export async function getDevices(): Promise<Device[]> {
       const latest = await getLatestReading(d.deviceId);
       return {
         ...d,
-        sensorReadings: [latest]
+        sensorReadings: latest ? [latest] : []
       };
     }));
   }
-  return apiFetch<Device[]>('/api/devices');
+  const devices = await apiFetch<unknown[]>('/api/devices');
+  return devices.map(normalizeDevice);
 }
 
 export async function getDeviceById(deviceId: string): Promise<Device | null> {
@@ -181,17 +254,28 @@ export async function getDeviceById(deviceId: string): Promise<Device | null> {
       commands: commands
     };
   }
-  return apiFetch<Device | null>(`/api/devices/${deviceId}`);
+  try {
+    return normalizeDevice(await apiFetch<unknown>(`/api/devices/${encodeURIComponent(deviceId)}`));
+  } catch (err) {
+    if (err instanceof Error && /404/.test(err.message)) return null;
+    throw err;
+  }
 }
 
-export async function getLatestReading(deviceId: string): Promise<SensorReading> {
+export async function getLatestReading(deviceId: string): Promise<SensorReading | null> {
   const useMock = getUseMock();
   if (useMock) {
     const rawReading = generateReadingAtTime(deviceId, new Date());
     const [overridden] = applyCommandOverrides(deviceId, [rawReading]);
     return overridden;
   }
-  return apiFetch<SensorReading>(`/api/devices/${deviceId}/telemetry/latest`);
+  try {
+    return normalizeReading(await apiFetch<unknown>(`/api/devices/${encodeURIComponent(deviceId)}/telemetry/latest`));
+  } catch (err) {
+    // 404 simply means the device has not reported yet
+    if (err instanceof Error && /404/.test(err.message)) return null;
+    throw err;
+  }
 }
 
 export async function getSensorHistory(deviceId: string, hours = 24): Promise<SensorReading[]> {
@@ -201,7 +285,8 @@ export async function getSensorHistory(deviceId: string, hours = 24): Promise<Se
     const rawHistory = generateSensorHistory(deviceId, hours);
     return applyCommandOverrides(deviceId, rawHistory);
   }
-  return apiFetch<SensorReading[]>(`/api/devices/${deviceId}/telemetry?hours=${hours}`);
+  const readings = await apiFetch<unknown[]>(`/api/devices/${encodeURIComponent(deviceId)}/telemetry?hours=${hours}`);
+  return readings.map(normalizeReading);
 }
 
 export async function queueCommand(
@@ -247,109 +332,133 @@ export async function queueCommand(
     return newCommand;
   }
 
-  return apiFetch<DeviceCommand>(`/api/devices/${deviceId}/commands`, {
+  const created = await apiFetch<unknown>(`/api/devices/${encodeURIComponent(deviceId)}/commands`, {
     method: 'POST',
     body: JSON.stringify({ commandType, commandValue }),
   });
+  return normalizeCommand(created);
 }
 
-// Synchronous operations using localStorage cache for seamless React rendering
+// Alerts, schedules and settings are cached in localStorage so the UI can render synchronously.
+// In backend mode the fetch* helpers refresh that cache from the API first.
 export function getAlerts(): AlertLog[] {
   return getStoredItem<AlertLog[]>('hydroflow_alerts', mockAlerts);
 }
 
-export function dismissAlert(alertId: string): void {
+export async function fetchAlerts(): Promise<AlertLog[]> {
+  if (getUseMock()) return getAlerts();
+  const alerts = (await apiFetch<unknown[]>('/api/alerts')).map(normalizeAlert);
+  alerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  setStoredItem('hydroflow_alerts', alerts);
+  return alerts;
+}
+
+export async function dismissAlert(alertId: string): Promise<void> {
+  if (!getUseMock()) {
+    await apiFetch(`/api/alerts/${encodeURIComponent(alertId)}/resolve`, { method: 'POST' });
+  }
   const alerts = getStoredItem<AlertLog[]>('hydroflow_alerts', mockAlerts);
   const updated = alerts.map(a => a.id === alertId ? { ...a, resolved: true, resolvedAt: new Date().toISOString() } : a);
   setStoredItem('hydroflow_alerts', updated);
-  
-  const useMock = getUseMock();
-  if (!useMock) {
-    apiFetch(`/api/alerts/${alertId}/resolve`, { method: 'POST' }).catch(console.error);
-  }
 }
 
-export function clearResolvedAlerts(): void {
-  const alerts = getStoredItem<AlertLog[]>('hydroflow_alerts', mockAlerts);
-  const updated = alerts.filter(a => !a.resolved);
-  setStoredItem('hydroflow_alerts', updated);
-  
-  const useMock = getUseMock();
-  if (!useMock) {
-    apiFetch('/api/alerts/resolved', { method: 'DELETE' }).catch(console.error);
+export async function clearResolvedAlerts(): Promise<void> {
+  if (!getUseMock()) {
+    await apiFetch('/api/alerts/resolved', { method: 'DELETE' });
   }
+  const alerts = getStoredItem<AlertLog[]>('hydroflow_alerts', mockAlerts);
+  setStoredItem('hydroflow_alerts', alerts.filter(a => !a.resolved));
 }
 
 export function getSchedules(): AutomationSchedule[] {
   return getStoredItem<AutomationSchedule[]>('hydroflow_schedules', mockSchedules);
 }
 
-export function toggleSchedule(id: string, active: boolean): void {
+export async function fetchSchedules(): Promise<AutomationSchedule[]> {
+  if (getUseMock()) return getSchedules();
+  const schedules = await apiFetch<AutomationSchedule[]>('/api/schedules');
+  setStoredItem('hydroflow_schedules', schedules);
+  return schedules;
+}
+
+export async function toggleSchedule(id: string, active: boolean): Promise<void> {
   const schedules = getStoredItem<AutomationSchedule[]>('hydroflow_schedules', mockSchedules);
   const updated = schedules.map(s => s.id === id ? { ...s, active } : s);
-  setStoredItem('hydroflow_schedules', updated);
-  
-  const useMock = getUseMock();
-  if (!useMock) {
-    const target = updated.find(s => s.id === id);
-    if (target) {
-      apiFetch(`/api/schedules/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(target)
-      }).catch(console.error);
-    }
+  const target = updated.find(s => s.id === id);
+  if (!getUseMock() && target) {
+    await apiFetch(`/api/schedules/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(target)
+    });
   }
+  setStoredItem('hydroflow_schedules', updated);
 }
 
-export function addSchedule(newSch: Omit<AutomationSchedule, 'id'>): void {
+export async function addSchedule(newSch: Omit<AutomationSchedule, 'id'>): Promise<AutomationSchedule> {
   const schedules = getStoredItem<AutomationSchedule[]>('hydroflow_schedules', mockSchedules);
-  const created: AutomationSchedule = {
+  let created: AutomationSchedule = {
     ...newSch,
-    id: `sch-${Math.random().toString(36).substr(2, 9)}`,
+    id: `sch-${Math.random().toString(36).substring(2, 11)}`,
   };
-  const updated = [...schedules, created];
-  setStoredItem('hydroflow_schedules', updated);
-  
-  const useMock = getUseMock();
-  if (!useMock) {
-    apiFetch('/api/schedules', {
+  if (!getUseMock()) {
+    created = await apiFetch<AutomationSchedule>('/api/schedules', {
       method: 'POST',
       body: JSON.stringify(created)
-    }).catch(console.error);
+    });
   }
+  setStoredItem('hydroflow_schedules', [...schedules, created]);
+  return created;
 }
+
+export async function deleteSchedule(id: string): Promise<void> {
+  if (!getUseMock()) {
+    await apiFetch<void>(`/api/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  const schedules = getStoredItem<AutomationSchedule[]>('hydroflow_schedules', mockSchedules);
+  setStoredItem('hydroflow_schedules', schedules.filter(s => s.id !== id));
+}
+
+const defaultSettings: SystemSettings = {
+  backendUrl: 'http://localhost:5119',
+  useMock: true,
+  calibrationPhOffset: 0.0,
+  calibrationTdsFactor: 1.0,
+  phMin: 5.5,
+  phMax: 6.5,
+  tdsMin: 800,
+  tdsMax: 1200,
+  tempMin: 18.0,
+  tempMax: 23.0,
+  waterLevelMin: 70,
+  humidityMin: 50,
+  humidityMax: 70
+};
 
 export function getSettings(): SystemSettings {
-  const defaultSettings: SystemSettings = {
-    backendUrl: 'http://localhost:5119',
-    useMock: true,
-    calibrationPhOffset: 0.0,
-    calibrationTdsFactor: 1.0,
-    phMin: 5.5,
-    phMax: 6.5,
-    tdsMin: 800,
-    tdsMax: 1200,
-    tempMin: 18.0,
-    tempMax: 23.0,
-    waterLevelMin: 70,
-    humidityMin: 50,
-    humidityMax: 70
-  };
-  return getStoredItem<SystemSettings>('hf_settings', defaultSettings);
+  return { ...defaultSettings, ...getStoredItem<Partial<SystemSettings>>('hf_settings', defaultSettings) };
 }
 
-export function updateSettings(newSettings: Partial<SystemSettings>): void {
-  const current = getSettings();
-  const updated = { ...current, ...newSettings };
+export async function fetchSettings(): Promise<SystemSettings> {
+  const local = getSettings();
+  if (local.useMock) return local;
+  // Connection settings (mock toggle and URL) stay local; thresholds and calibration live on the backend.
+  const remote = await apiFetch<SystemSettings>('/api/settings');
+  const merged = { ...local, ...remote, useMock: local.useMock, backendUrl: local.backendUrl };
+  setStoredItem('hf_settings', merged);
+  return merged;
+}
+
+export async function updateSettings(newSettings: Partial<SystemSettings>): Promise<SystemSettings> {
+  const updated = { ...getSettings(), ...newSettings };
+  // Persist locally first so connection settings can be changed even when the backend is unreachable.
   setStoredItem('hf_settings', updated);
-  
-  const useMock = getUseMock();
-  if (!useMock) {
-    apiFetch('/api/settings', {
+  if (!updated.useMock) {
+    await apiFetch('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(updated)
-    }).catch(console.error);
+    });
   }
+  return updated;
 }
 
 export async function getSystemStats(): Promise<SystemStats> {
@@ -359,9 +468,9 @@ export async function getSystemStats(): Promise<SystemStats> {
     const devices = getStoredItem<Device[]>('hydroflow_devices', mockDevices);
     const onlineDevs = devices.filter(d => d.isOnline);
     
-    const latestReadings = await Promise.all(
+    const latestReadings = (await Promise.all(
       onlineDevs.map(d => getLatestReading(d.deviceId))
-    );
+    )).filter((r): r is SensorReading => r !== null);
     
     const validPh = latestReadings.map(r => r.ph).filter(v => v !== undefined);
     const validTds = latestReadings.map(r => r.tds).filter(v => v !== undefined);
@@ -371,9 +480,9 @@ export async function getSystemStats(): Promise<SystemStats> {
     const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
     return {
-      totalSystems: 4,
-      activeSystems: 3,
-      alertSystems: 1,
+      totalSystems: devices.length,
+      activeSystems: onlineDevs.length,
+      alertSystems: new Set(getAlerts().filter(a => !a.resolved).map(a => a.deviceId)).size,
       onlineDevices: onlineDevs.length,
       offlineDevices: devices.length - onlineDevs.length,
       averagePh: avg(validPh),
@@ -382,7 +491,14 @@ export async function getSystemStats(): Promise<SystemStats> {
       averageDissolvedOxygen: avg(validDo),
     };
   }
-  return apiFetch<SystemStats>('/api/stats');
+  const raw = await apiFetch<Record<string, number | null>>('/api/stats');
+  return {
+    ...raw,
+    averagePh: raw.averagePh ?? 0,
+    averageTds: raw.averageTds ?? 0,
+    averageWaterTemp: raw.averageWaterTemp ?? 0,
+    averageDissolvedOxygen: raw.averageDissolvedOxygen ?? 0
+  } as SystemStats;
 }
 
 export async function getCommands(deviceId?: string): Promise<DeviceCommand[]> {
@@ -395,8 +511,14 @@ export async function getCommands(deviceId?: string): Promise<DeviceCommand[]> {
     }
     return commands;
   }
-  const path = deviceId ? `/api/devices/${deviceId}/commands` : '/api/commands';
-  return apiFetch<DeviceCommand[]>(path);
+  if (deviceId) {
+    const commands = await apiFetch<unknown[]>(`/api/devices/${encodeURIComponent(deviceId)}/commands`);
+    return commands.map(normalizeCommand);
+  }
+  // No global command listing exists on the backend; merge each device's recent commands.
+  const devices = await apiFetch<{ deviceId: string }[]>('/api/devices');
+  const perDevice = await Promise.all(devices.map(d => getCommands(d.deviceId)));
+  return perDevice.flat().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export function generateCsvExport(device: Device): string {
@@ -427,9 +549,12 @@ export function generateCsvExport(device: Device): string {
     r.ledState
   ]);
 
+  const escape = (val: string | number | undefined) =>
+    typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : (val ?? '');
+
   const csvContent = [
     headers.join(','),
-    ...rows.map(row => row.map(val => typeof val === 'string' ? `"${val}"` : val).join(','))
+    ...rows.map(row => row.map(escape).join(','))
   ].join('\n');
 
   return csvContent;
@@ -439,11 +564,21 @@ export function getActiveCommandsQueue(): DeviceCommand[] {
   return getStoredItem<DeviceCommand[]>('hydroflow_commands', mockCommands);
 }
 
+// Backend mode has no endpoint for deleting command history, so "clear" hides everything up to now locally.
+const QUEUE_CLEARED_KEY = 'hf_queue_cleared_at';
+
+export async function fetchCommandQueue(): Promise<DeviceCommand[]> {
+  if (getUseMock()) return getActiveCommandsQueue();
+  const commands = await getCommands();
+  const clearedAt = Number(localStorage.getItem(QUEUE_CLEARED_KEY) || 0);
+  return commands.filter(c => new Date(c.createdAt).getTime() > clearedAt);
+}
+
 export function clearActiveCommandsQueue(): void {
-  setStoredItem('hydroflow_commands', []);
-  const useMock = getUseMock();
-  if (!useMock) {
-    apiFetch('/api/commands/queue', { method: 'DELETE' }).catch(console.error);
+  if (getUseMock()) {
+    setStoredItem('hydroflow_commands', []);
+  } else {
+    localStorage.setItem(QUEUE_CLEARED_KEY, String(Date.now()));
   }
 }
 
@@ -497,49 +632,42 @@ const defaultGrowthObservations: GrowthObservation[] = [
 ];
 
 export async function getGrowthObservations(): Promise<GrowthObservation[]> {
-  try {
-    const data = await apiFetch<GrowthObservation[]>('/api/growth');
-    setStoredItem('hydroflow_growth_logs', data);
-    return data;
-  } catch (e) {
-    console.warn('Backend unavailable for growth observations, using local cache:', e);
+  if (getUseMock()) {
     return getStoredItem<GrowthObservation[]>('hydroflow_growth_logs', defaultGrowthObservations);
   }
+  const data = await apiFetch<GrowthObservation[]>('/api/growth');
+  const normalized = data.map(o => ({ ...o, createdAt: toIso(o.createdAt) }));
+  setStoredItem('hydroflow_growth_logs', normalized);
+  return normalized;
 }
 
 export async function addGrowthObservation(obs: Omit<GrowthObservation, 'id' | 'createdAt'>): Promise<GrowthObservation> {
-  try {
-    const created = await apiFetch<GrowthObservation>('/api/growth', {
-      method: 'POST',
-      body: JSON.stringify(obs),
-    });
-    const current = getStoredItem<GrowthObservation[]>('hydroflow_growth_logs', []);
-    setStoredItem('hydroflow_growth_logs', [created, ...current]);
-    return created;
-  } catch (e) {
-    console.warn('Backend unavailable, saving growth observation to local cache:', e);
-    const current = getStoredItem<GrowthObservation[]>('hydroflow_growth_logs', defaultGrowthObservations);
-    const created: GrowthObservation = {
+  const current = getStoredItem<GrowthObservation[]>('hydroflow_growth_logs', defaultGrowthObservations);
+  let created: GrowthObservation;
+  if (getUseMock()) {
+    created = {
       ...obs,
       id: `obs-${Math.random().toString(36).substring(2, 9)}`,
       createdAt: new Date().toISOString(),
     };
-    const updated = [created, ...current];
-    setStoredItem('hydroflow_growth_logs', updated);
-    return created;
+  } else {
+    // Failures propagate so the UI never shows an entry that was not persisted
+    created = await apiFetch<GrowthObservation>('/api/growth', {
+      method: 'POST',
+      body: JSON.stringify(obs),
+    });
+    created = { ...created, createdAt: toIso(created.createdAt) };
   }
+  setStoredItem('hydroflow_growth_logs', [created, ...current]);
+  return created;
 }
 
 export async function deleteGrowthObservation(id: string): Promise<void> {
-  try {
-    const url = `${getBaseUrl()}/api/growth/${id}`;
-    await fetch(url, { method: 'DELETE' });
-  } catch (e) {
-    console.warn('Backend unavailable when deleting growth observation:', e);
+  if (!getUseMock()) {
+    await apiFetch(`/api/growth/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
   const current = getStoredItem<GrowthObservation[]>('hydroflow_growth_logs', defaultGrowthObservations);
-  const updated = current.filter(o => o.id !== id);
-  setStoredItem('hydroflow_growth_logs', updated);
+  setStoredItem('hydroflow_growth_logs', current.filter(o => o.id !== id));
 }
 
 // Unified api object representing the default and named api helper
@@ -550,17 +678,22 @@ export const api = {
   getSensorHistory,
   queueCommand,
   getAlerts,
+  fetchAlerts,
   dismissAlert,
   clearResolvedAlerts,
   getSchedules,
+  fetchSchedules,
   toggleSchedule,
   addSchedule,
+  deleteSchedule,
   getSettings,
+  fetchSettings,
   updateSettings,
   getSystemStats,
   getCommands,
   generateCsvExport,
   getActiveCommandsQueue,
+  fetchCommandQueue,
   clearActiveCommandsQueue,
   getCircuitLayout,
   saveCircuitLayout,

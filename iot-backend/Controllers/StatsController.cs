@@ -20,42 +20,42 @@ namespace IoTBackend.Controllers
         [HttpGet]
         public async Task<IActionResult> GetStats()
         {
-            var devices = await _context.Devices.ToListAsync();
+            var onlineCutoff = DateTime.UtcNow.AddSeconds(-90);
+            var devices = await _context.Devices.AsNoTracking().ToListAsync();
             var totalDevices = devices.Count;
-            var onlineDevices = devices.Count(d => d.IsOnline);
+            var onlineDevices = devices.Count(d => d.LastSeen >= onlineCutoff);
             var offlineDevices = totalDevices - onlineDevices;
 
-            // Fetch the latest reading for each device
-            var latestReadings = await _context.Devices
-                .Select(d => _context.SensorData
+            var latestReadings = new List<IoTBackend.Models.SensorData>();
+            foreach (var d in devices)
+            {
+                var r = await _context.SensorData
                     .Where(s => s.DeviceId == d.DeviceId)
                     .OrderByDescending(s => s.Timestamp)
-                    .FirstOrDefault())
-                .Where(s => s != null)
-                .ToListAsync();
-
-            float avgPh = 0f, avgTds = 0f, avgTemp = 0f, avgDo = 0f;
-
-            if (latestReadings.Any())
-            {
-                avgPh = latestReadings.Average(r => r!.Ph);
-                avgTds = latestReadings.Average(r => r!.Tds);
-                avgTemp = latestReadings.Average(r => r!.Temperature);
-                avgDo = latestReadings.Average(r => r!.DissolvedOxygen);
+                    .FirstOrDefaultAsync();
+                if (r != null) latestReadings.Add(r);
             }
 
-            // We mock some system count parameters for DWC, NFT, Drip, Aeroponics display matching dashboard layouts
+            double? Avg(Func<IoTBackend.Models.SensorData, double> sel) =>
+                latestReadings.Count > 0 ? latestReadings.Average(sel) : null;
+
+            var settings = await _context.SystemSettings.AsNoTracking().FirstOrDefaultAsync();
+            var phMin = settings?.PhMin ?? 5.5f;
+            var phMax = settings?.PhMax ?? 6.5f;
+            var tdsMin = settings?.TdsMin ?? 800f;
+            var tdsMax = settings?.TdsMax ?? 1200f;
+
             var stats = new
             {
-                totalSystems = 4,
-                activeSystems = onlineDevices > 0 ? onlineDevices : 1,
-                alertSystems = latestReadings.Count(r => r!.Ph < 5.5f || r.Ph > 6.5f || r.Tds < 800f || r.Tds > 1200f),
-                onlineDevices = onlineDevices,
-                offlineDevices = offlineDevices,
-                averagePh = avgPh > 0 ? avgPh : 6.0f,
-                averageTds = avgTds > 0 ? avgTds : 950.0f,
-                averageWaterTemp = avgTemp > 0 ? avgTemp : 21.0f,
-                averageDissolvedOxygen = avgDo > 0 ? avgDo : 6.5f
+                totalSystems = totalDevices,
+                activeSystems = onlineDevices,
+                alertSystems = latestReadings.Count(r => r.Ph < phMin || r.Ph > phMax || r.Tds < tdsMin || r.Tds > tdsMax),
+                onlineDevices,
+                offlineDevices,
+                averagePh = Avg(r => r.Ph),
+                averageTds = Avg(r => r.Tds),
+                averageWaterTemp = Avg(r => r.Temperature),
+                averageDissolvedOxygen = Avg(r => r.DissolvedOxygen)
             };
 
             return Ok(stats);

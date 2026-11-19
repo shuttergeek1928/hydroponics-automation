@@ -15,10 +15,12 @@ import {
   X,
   PlusCircle,
   HelpCircle,
-  Check
+  Check,
+  Trash2
 } from "lucide-react";
 import { api, AutomationSchedule, Device } from "@/lib/api";
 import PageTransition from "@/components/PageTransition";
+import { useToast } from "@/components/ui/Toast";
 
 export default function SchedulesPage() {
   const [schedules, setSchedules] = useState<AutomationSchedule[]>([]);
@@ -26,6 +28,8 @@ export default function SchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
 
   // New Schedule Form States
   const [name, setName] = useState("");
@@ -38,16 +42,14 @@ export default function SchedulesPage() {
 
   const fetchData = async () => {
     try {
-      const schList = api.getSchedules();
-      setSchedules(schList);
-      
+      setSchedules(await api.fetchSchedules());
+
       const devList = await api.getDevices();
       setDevices(devList);
-      if (devList.length > 0 && !targetDevice) {
-        setTargetDevice(devList[0].deviceId);
-      }
+      setTargetDevice(prev => prev || devList[0]?.deviceId || "");
     } catch (err) {
       console.error(err);
+      toast(err instanceof Error ? err.message : "Failed to load schedules.", "error");
     } finally {
       setLoading(false);
     }
@@ -57,33 +59,67 @@ export default function SchedulesPage() {
     fetchData();
   }, []);
 
-  const handleToggle = (id: string, currentStatus: boolean) => {
-    api.toggleSchedule(id, !currentStatus);
-    fetchData();
+  const handleToggle = async (id: string, currentStatus: boolean) => {
+    try {
+      await api.toggleSchedule(id, !currentStatus);
+      await fetchData();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to update schedule.", "error");
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleDelete = async (id: string, label: string) => {
+    if (!window.confirm(`Delete automation rule "${label}"?`)) return;
+    try {
+      await api.deleteSchedule(id);
+      await fetchData();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to delete schedule.", "error");
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    api.addSchedule({
-      name,
-      type,
-      timeStart,
-      timeEnd: type === "lighting" ? timeEnd : undefined,
-      duration: type !== "lighting" ? parseInt(duration) : undefined,
-      active: true,
-      targetDevice,
-      description
-    });
 
-    setIsModalOpen(false);
-    setSuccessMsg(true);
-    setTimeout(() => setSuccessMsg(false), 3000);
+    if (!targetDevice) {
+      toast("Select a target controller. Register a device first if the list is empty.", "error");
+      return;
+    }
+    if (type === "lighting" && timeEnd === timeStart) {
+      toast("Lighting start and end times must differ.", "error");
+      return;
+    }
+    const minutes = parseInt(duration);
+    if (type !== "lighting" && !(minutes >= 1 && minutes <= 5)) {
+      toast("Duration must be between 1 and 5 minutes (firmware safety cap).", "error");
+      return;
+    }
 
-    // Reset Form
-    setName("");
-    setDescription("");
-    fetchData();
+    setSubmitting(true);
+    try {
+      await api.addSchedule({
+        name: name.trim(),
+        type,
+        timeStart,
+        timeEnd: type === "lighting" ? timeEnd : undefined,
+        duration: type !== "lighting" ? minutes : undefined,
+        active: true,
+        targetDevice,
+        description: description.trim()
+      });
+
+      setIsModalOpen(false);
+      setSuccessMsg(true);
+      setTimeout(() => setSuccessMsg(false), 3000);
+
+      setName("");
+      setDescription("");
+      await fetchData();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to create schedule.", "error");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const getIcon = (type: string) => {
@@ -137,6 +173,13 @@ export default function SchedulesPage() {
           <RefreshCw className="w-8 h-8 text-primary animate-spin" />
         </div>
       ) : (
+        schedules.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-3xl border border-border">
+            <Calendar className="w-12 h-12 text-text-muted mx-auto mb-4" />
+            <p className="text-lg font-bold text-text">No automation rules yet</p>
+            <p className="text-xs text-text-muted mt-1">Use &quot;Add Custom Rule&quot; to schedule watering or lighting.</p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {schedules.map((schedule) => {
             const Icon = getIcon(schedule.type);
@@ -160,6 +203,9 @@ export default function SchedulesPage() {
                     {/* Premium Toggle Switch */}
                     <button
                       onClick={() => handleToggle(schedule.id, schedule.active)}
+                      role="switch"
+                      aria-checked={schedule.active}
+                      aria-label={`${schedule.active ? "Disable" : "Enable"} ${schedule.name}`}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
                         schedule.active ? "bg-primary" : "bg-border"
                       }`}
@@ -203,11 +249,19 @@ export default function SchedulesPage() {
                 <div className="flex items-center gap-2 text-[10px] text-text-muted font-semibold border-t border-border/40 pt-4 mt-auto">
                   <Calendar className="w-3.5 h-3.5 text-text-muted" />
                   <span>Runs daily automatically</span>
+                  <button
+                    onClick={() => handleDelete(schedule.id, schedule.name)}
+                    aria-label={`Delete ${schedule.name}`}
+                    className="ml-auto p-1.5 rounded-lg hover:bg-red-50 text-text-muted hover:text-red-600 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </motion.div>
             );
           })}
         </div>
+        )
       )}
 
       {/* Add Custom Schedule Dialog Modal */}
@@ -260,7 +314,7 @@ export default function SchedulesPage() {
                     <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">Schedule Type</label>
                     <select
                       value={type}
-                      onChange={(e) => setType(e.target.value as any)}
+                      onChange={(e) => setType(e.target.value as typeof type)}
                       className="w-full bg-surface border border-border px-3 py-2.5 rounded-xl text-xs focus:outline-none focus:border-primary font-semibold"
                     >
                       <option value="watering">Watering Timer</option>
@@ -334,9 +388,10 @@ export default function SchedulesPage() {
 
                 <button
                   type="submit"
-                  className="w-full btn-primary h-12 text-xs font-bold flex items-center justify-center gap-2 mt-4"
+                  disabled={submitting}
+                  className="w-full btn-primary h-12 text-xs font-bold flex items-center justify-center gap-2 mt-4 disabled:opacity-60"
                 >
-                  Create and Activate Rule
+                  {submitting ? "Saving..." : "Create and Activate Rule"}
                 </button>
               </form>
             </motion.div>

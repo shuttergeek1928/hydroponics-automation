@@ -19,6 +19,7 @@ builder.Services.AddDbContext<IoTDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<IDeviceService, DeviceService>();
+builder.Services.AddHostedService<IoTBackend.Services.ScheduleRunner>();
 
 builder.Services.AddCors(options =>
 {

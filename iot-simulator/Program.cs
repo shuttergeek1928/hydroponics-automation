@@ -72,6 +72,22 @@ namespace IoTSimulator
                     {
                         Console.WriteLine($"[ERROR] Sensor data send failed: {response.StatusCode}");
                     }
+                    else
+                    {
+                        // The backend marks commands returned here as sent, so they must be executed now
+                        var body = await response.Content.ReadAsStringAsync();
+                        var inline = string.IsNullOrWhiteSpace(body)
+                            ? null
+                            : JsonSerializer.Deserialize<List<DeviceCommandDto>>(body);
+                        if (inline != null)
+                        {
+                            foreach (var cmd in inline)
+                            {
+                                Console.WriteLine($"[COMMAND] Received (inline): {cmd.CommandType} -> {cmd.CommandValue}");
+                                await ExecuteCommandAsync(cmd);
+                            }
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {

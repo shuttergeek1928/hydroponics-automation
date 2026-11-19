@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace IoTBackend.Controllers
 {
@@ -15,7 +16,33 @@ namespace IoTBackend.Controllers
     [Route("api/[controller]")]
     public class CircuitController : ControllerBase
     {
-        private static readonly ConcurrentDictionary<string, CircuitLayoutDto> _circuitStore = new();
+        // Layouts are persisted to a JSON file so they survive restarts (no schema migration needed)
+        private static readonly object _fileLock = new();
+        private static readonly string _storePath = Path.Combine(AppContext.BaseDirectory, "App_Data", "circuit-layouts.json");
+        private static readonly ConcurrentDictionary<string, CircuitLayoutDto> _circuitStore = Load();
+
+        private static ConcurrentDictionary<string, CircuitLayoutDto> Load()
+        {
+            try
+            {
+                if (System.IO.File.Exists(_storePath))
+                {
+                    var data = JsonSerializer.Deserialize<Dictionary<string, CircuitLayoutDto>>(System.IO.File.ReadAllText(_storePath));
+                    if (data != null) return new ConcurrentDictionary<string, CircuitLayoutDto>(data);
+                }
+            }
+            catch (Exception) { }
+            return new ConcurrentDictionary<string, CircuitLayoutDto>();
+        }
+
+        private static void Persist()
+        {
+            lock (_fileLock)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(_storePath)!);
+                System.IO.File.WriteAllText(_storePath, JsonSerializer.Serialize(_circuitStore));
+            }
+        }
 
         [HttpGet("{deviceId}")]
         public IActionResult GetCircuitLayout(string deviceId)
@@ -33,6 +60,7 @@ namespace IoTBackend.Controllers
             dto.DeviceId = deviceId;
             dto.UpdatedAt = DateTime.UtcNow;
             _circuitStore[deviceId] = dto;
+            Persist();
             return Ok(dto);
         }
     }

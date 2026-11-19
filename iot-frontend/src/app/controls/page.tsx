@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { api, Device, DeviceCommand } from "@/lib/api";
 import PageTransition from "@/components/PageTransition";
+import { useToast } from "@/components/ui/Toast";
 
 export default function ControlsPage() {
   const [devices, setDevices] = useState<Device[]>([]);
@@ -29,6 +30,7 @@ export default function ControlsPage() {
   const [customPollInterval, setCustomPollInterval] = useState<string>("30");
   const [queue, setQueue] = useState<DeviceCommand[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const fetchData = async () => {
     try {
@@ -41,7 +43,7 @@ export default function ControlsPage() {
       }
 
       // Sync active commands queue
-      const activeQueue = api.getActiveCommandsQueue();
+      const activeQueue = await api.fetchCommandQueue();
       setQueue(activeQueue);
     } catch (err) {
       console.error(err);
@@ -58,13 +60,30 @@ export default function ControlsPage() {
 
   const sendCommand = async (type: DeviceCommand["commandType"], value: string, actionLabel: string) => {
     if (!selectedDeviceId) return;
+
+    const n = Number(value);
+    if (type === "pump_duration" && !(Number.isInteger(n) && n >= 1 && n <= 300)) {
+      toast("Pump duration must be a whole number between 1 and 300 seconds.", "error");
+      return;
+    }
+    if (type === "sensor_interval" && !(Number.isInteger(n) && n >= 5 && n <= 3600)) {
+      toast("Polling interval must be a whole number between 5 and 3600 seconds.", "error");
+      return;
+    }
+    if (type === "restart" && !window.confirm("Restart this controller? Pumps and lights will pause until it reconnects.")) return;
+
     setIsSubmitting(actionLabel);
     try {
-      await api.queueCommand(selectedDeviceId, type, value);
+      const cmd = await api.queueCommand(selectedDeviceId, type, value);
+      if (cmd.status === "Failed") {
+        toast("Command failed: the controller is offline or unknown.", "error");
+      } else {
+        toast(`Command ${type} = ${value} ${cmd.status === "Executed" ? "executed" : "queued; it is delivered on the next device poll"}.`, "success");
+      }
       await fetchData();
     } catch (err) {
       console.error(err);
-      alert("Failed to queue command.");
+      toast(err instanceof Error ? err.message : "Failed to queue command.", "error");
     } finally {
       setIsSubmitting(null);
     }
@@ -132,7 +151,7 @@ export default function ControlsPage() {
               {selectedDevice && !selectedDevice.isOnline && (
                 <div className="mt-4 p-3 bg-danger/5 border border-danger/10 text-danger rounded-xl flex items-center gap-2 text-xs">
                   <AlertTriangle className="w-4 h-4" />
-                  <span>Warning: This device is currently **offline**. Commands will queue but won't deliver until reconnect.</span>
+                  <span>Warning: This device is currently offline. Commands will queue but won&apos;t be delivered until it reconnects.</span>
                 </div>
               )}
             </div>

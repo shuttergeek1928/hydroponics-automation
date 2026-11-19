@@ -194,7 +194,7 @@ export default function TinkercadStudio({ device }: TinkercadStudioProps) {
     } else {
       if (drawingStartTerminalId !== term.id) {
         const newWire: CircuitWire = {
-          id: `w_${Date.now()}`,
+          id: `w_${crypto.randomUUID()}`,
           fromTerminalId: drawingStartTerminalId,
           toTerminalId: term.id,
           color: activeWireColor,
@@ -207,7 +207,7 @@ export default function TinkercadStudio({ device }: TinkercadStudioProps) {
   };
 
   const handleAddComponent = (type: StudioComponent['type']) => {
-    const newId = `${type}_${Date.now()}`;
+    const newId = `${type}_${crypto.randomUUID()}`;
 
     if (type === 'breadboard') {
       const newComp: StudioComponent = {

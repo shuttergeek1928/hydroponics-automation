@@ -18,11 +18,15 @@ import {
 } from "lucide-react";
 import { api, SystemSettings } from "@/lib/api";
 import PageTransition from "@/components/PageTransition";
+import { useToast } from "@/components/ui/Toast";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const { toast } = useToast();
 
   // Form Inputs
   const [backendUrl, setBackendUrl] = useState("");
@@ -37,9 +41,14 @@ export default function SettingsPage() {
   const [tempMin, setTempMin] = useState("");
   const [tempMax, setTempMax] = useState("");
 
-  const loadSettings = () => {
+  const loadSettings = async () => {
     try {
-      const data = api.getSettings();
+      let data = api.getSettings();
+      try {
+        data = await api.fetchSettings();
+      } catch (err) {
+        toast(err instanceof Error ? err.message : "Could not load settings from the backend.", "error");
+      }
       setSettings(data);
       
       setBackendUrl(data.backendUrl);
@@ -64,32 +73,64 @@ export default function SettingsPage() {
     loadSettings();
   }, []);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!settings) return;
 
-    api.updateSettings({
-      backendUrl,
-      useMock,
+    const values = {
       calibrationPhOffset: parseFloat(phOffset),
       calibrationTdsFactor: parseFloat(tdsFactor),
       phMin: parseFloat(phMin),
       phMax: parseFloat(phMax),
-      tdsMin: parseInt(tdsMin),
-      tdsMax: parseInt(tdsMax),
+      tdsMin: parseFloat(tdsMin),
+      tdsMax: parseFloat(tdsMax),
       tempMin: parseFloat(tempMin),
       tempMax: parseFloat(tempMax)
-    });
+    };
+    if (Object.values(values).some(v => !Number.isFinite(v))) {
+      toast("Every calibration and threshold field needs a valid number.", "error");
+      return;
+    }
+    if (values.phMin >= values.phMax || values.tdsMin >= values.tdsMax || values.tempMin >= values.tempMax) {
+      toast("Each minimum threshold must be lower than its maximum.", "error");
+      return;
+    }
+    if (values.calibrationTdsFactor <= 0) {
+      toast("TDS calibration factor must be greater than zero.", "error");
+      return;
+    }
 
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
-    loadSettings();
+    setSaving(true);
+    try {
+      await api.updateSettings({ backendUrl: backendUrl.trim(), useMock, ...values });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      await loadSettings();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to save settings.", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleResetDefaults = () => {
+  const handleTestConnection = async () => {
+    setTesting(true);
+    try {
+      const base = backendUrl.trim().replace(/\/+$/, "").replace(/\/api$/, "");
+      const res = await fetch(`${base}/api/stats`);
+      if (!res.ok) throw new Error(`Backend responded with ${res.status}`);
+      toast("Connection successful: backend is reachable.", "success");
+    } catch (err) {
+      toast(err instanceof Error && !/fetch/i.test(err.message) ? err.message : `Cannot reach ${backendUrl}. Check the address and that the backend is running.`, "error");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleResetDefaults = async () => {
     if (confirm("Are you sure you want to restore default application settings?")) {
       localStorage.removeItem("hf_settings");
-      loadSettings();
+      await loadSettings();
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     }
@@ -175,12 +216,20 @@ export default function SettingsPage() {
                       type="url"
                       value={backendUrl}
                       onChange={(e) => setBackendUrl(e.target.value)}
-                      placeholder="http://192.168.1.XX:5119/api"
+                      placeholder="http://192.168.1.XX:5119"
                       className="w-full bg-surface border border-border px-4 py-3.5 rounded-2xl text-xs font-mono focus:outline-none focus:border-primary"
                       required={!useMock}
                     />
+                    <button
+                      type="button"
+                      onClick={handleTestConnection}
+                      disabled={testing || !backendUrl.trim()}
+                      className="btn-secondary text-xs h-9 px-4 disabled:opacity-60"
+                    >
+                      {testing ? "Testing..." : "Test Connection"}
+                    </button>
                     <span className="block text-[10px] text-text-muted leading-relaxed font-semibold">
-                      Verify that your ESP32 controller and backend host are on the exact same local Wi-Fi. Run `.NET run --urls="http://0.0.0.0:5119"` to bind correctly.
+                      Enter the host only (no /api suffix). Verify that your ESP32 controller and backend host are on the exact same local Wi-Fi. Run `dotnet run --urls=&quot;http://0.0.0.0:5119&quot;` to bind correctly.
                     </span>
                   </motion.div>
                 )}
@@ -324,9 +373,10 @@ export default function SettingsPage() {
 
                 <button
                   type="submit"
-                  className="w-full btn-primary h-11 text-xs font-bold flex items-center justify-center gap-2 mt-6 shadow-md"
+                  disabled={saving}
+                  className="w-full btn-primary h-11 text-xs font-bold flex items-center justify-center gap-2 mt-6 shadow-md disabled:opacity-60"
                 >
-                  <Save className="w-4 h-4" /> Save System Settings
+                  <Save className="w-4 h-4" /> {saving ? "Saving..." : "Save System Settings"}
                 </button>
               </div>
             </div>
